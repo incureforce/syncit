@@ -54,7 +54,7 @@ jobs:
         run: |
           mkdir -p dist
           BINARY_NAME="${{ github.event.repository.name }}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}"
-          go build -v -o "dist/${BINARY_NAME}" .
+          go build -v -o "dist/${BINARY_NAME}" ./cmd/syncit
 
       - name: Package archive
         run: |
