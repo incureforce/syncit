@@ -1,0 +1,35 @@
+name: Build and Release
+on: [push, tag]
+
+jobs:
+  build:
+    name: Build for Windows and Linux
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.26.1'
+
+      - name: Build for Windows (x64)
+        run: |
+          GOOS=windows GOARCH=amd64 go build -o syncit.exe ./cmd/syncit
+        env:
+          CGO_ENABLED: 0
+
+      - name: Build for Linux (amd64)
+        run: |
+          GOOS=linux GOARCH=amd64 go build -o syncit ./cmd/syncit
+        env:
+          CGO_ENABLED: 0
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: release-binaries
+          path: |
+            syncit
+            syncit.exe
