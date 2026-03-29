@@ -14,6 +14,14 @@ Written in Go 1.26+, Made with Cursor - because it helps me convert my ideas **f
 
 **Not** a distributed VCS. **Not** hardened for the public internet—use a trusted LAN or VPN.
 
+**Install Scripts**
+
+Linux: [install.sh](https://gist.githubusercontent.com/incureforce/b98d3edb1f74287a870c9deb05137d5c/raw/76f9941c08d9adf8fe9c744fb139f73fc5feef77/install.sh)
+
+```sh
+curl -sS https://gist.githubusercontent.com/incureforce/b98d3edb1f74287a870c9deb05137d5c/raw/76f9941c08d9adf8fe9c744fb139f73fc5feef77/install.sh | sh
+```
+
 ---
 
 ## Architecture
