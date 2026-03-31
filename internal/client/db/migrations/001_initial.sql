@@ -19,9 +19,10 @@ CREATE TABLE IF NOT EXISTS mount (
 	root_path TEXT NOT NULL,
 	created_at TEXT NOT NULL,
 	deleted_at TEXT,
-	updated_at TEXT NOT NULL,
-	UNIQUE(name)
+	updated_at TEXT NOT NULL
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mount_name ON mount(name) WHERE deleted_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS mount_file (
 	id TEXT PRIMARY KEY,
@@ -39,8 +40,9 @@ CREATE TABLE IF NOT EXISTS mount_file (
 	created_at TEXT NOT NULL,
 	deleted_at TEXT,
 	updated_at TEXT NOT NULL,
-	UNIQUE(mount_id, local_file_path),
 	FOREIGN KEY (mount_id) REFERENCES mount(id)
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mount_file_unique ON mount_file(mount_id, local_file_path) WHERE deleted_at IS NULL;
 
 PRAGMA user_version = 1;

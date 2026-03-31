@@ -16,13 +16,13 @@ CREATE TABLE IF NOT EXISTS clients (
 -- Global mount names (not per-client). Files and versions live under a mount.
 CREATE TABLE IF NOT EXISTS mounts (
 	id TEXT PRIMARY KEY,
-	name TEXT NOT NULL UNIQUE,
+	name TEXT NOT NULL,
 	created_at DATETIME NOT NULL,
 	updated_at DATETIME NOT NULL,
 	deleted_at DATETIME
 );
 
-CREATE INDEX IF NOT EXISTS idx_mounts_name ON mounts(name);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mounts_name ON mounts(name) WHERE deleted_at IS NULL;
 
 -- Which clients use which global mounts (for pull visibility and future sync).
 CREATE TABLE IF NOT EXISTS client_mounts (
@@ -32,11 +32,11 @@ CREATE TABLE IF NOT EXISTS client_mounts (
 	created_at DATETIME NOT NULL,
 	updated_at DATETIME NOT NULL,
 	deleted_at DATETIME,
-	UNIQUE(client_id, mount_id),
 	FOREIGN KEY (client_id) REFERENCES clients(id),
 	FOREIGN KEY (mount_id) REFERENCES mounts(id)
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_client_mounts_unique ON client_mounts(client_id, mount_id) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_client_mounts_client ON client_mounts(client_id);
 CREATE INDEX IF NOT EXISTS idx_client_mounts_mount ON client_mounts(mount_id);
 
@@ -48,10 +48,10 @@ CREATE TABLE IF NOT EXISTS mount_files (
 	created_at DATETIME NOT NULL,
 	updated_at DATETIME NOT NULL,
 	deleted_at DATETIME,
-	UNIQUE(mount_id, path),
 	FOREIGN KEY (mount_id) REFERENCES mounts(id)
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mount_files_mount_path ON mount_files(mount_id, path) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_mount_files_mount ON mount_files(mount_id);
 
 CREATE TABLE IF NOT EXISTS mount_file_versions (
@@ -64,10 +64,10 @@ CREATE TABLE IF NOT EXISTS mount_file_versions (
 	created_at DATETIME NOT NULL,
 	updated_at DATETIME NOT NULL,
 	deleted_at DATETIME,
-	UNIQUE(mount_file_id, file_version),
 	FOREIGN KEY (mount_file_id) REFERENCES mount_files(id)
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mfv_file_version ON mount_file_versions(mount_file_id, file_version) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_mfv_file ON mount_file_versions(mount_file_id);
 
 CREATE TABLE IF NOT EXISTS shares (
@@ -88,8 +88,9 @@ CREATE TABLE IF NOT EXISTS share_files (
 	created_at DATETIME NOT NULL,
 	updated_at DATETIME NOT NULL,
 	deleted_at DATETIME,
-	UNIQUE(share_id, path),
 	FOREIGN KEY (share_id) REFERENCES shares(id)
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_share_files_share_path ON share_files(share_id, path) WHERE deleted_at IS NULL;
 
 PRAGMA user_version = 1;
