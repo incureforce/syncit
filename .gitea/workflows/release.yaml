@@ -1,5 +1,5 @@
 name: Build and Release
-on: [push, tag]
+on: [tag]
 
 jobs:
   build:
