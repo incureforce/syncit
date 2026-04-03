@@ -16,10 +16,10 @@ Written in Go 1.26+, Made with Cursor - because it helps me convert my ideas **f
 
 **Install Scripts**
 
-Linux: [install.sh](https://gist.githubusercontent.com/incureforce/b98d3edb1f74287a870c9deb05137d5c/raw/76f9941c08d9adf8fe9c744fb139f73fc5feef77/install.sh)
+Linux: [install.sh](https://raw.githubusercontent.com/incureforce/syncit/refs/heads/main/scripts/install.sh)
 
 ```sh
-curl -sS https://gist.githubusercontent.com/incureforce/b98d3edb1f74287a870c9deb05137d5c/raw/76f9941c08d9adf8fe9c744fb139f73fc5feef77/install.sh | sh
+curl -sS https://raw.githubusercontent.com/incureforce/syncit/refs/heads/main/scripts/install.sh | sh
 ```
 
 ---
@@ -72,11 +72,17 @@ syncit push
 
 | Command | Purpose |
 |---------|---------|
+| `syncit init <server-url>` | Initialize local client DB and register this client with the server. |
+| `syncit mount add <name> <path>` / `syncit mount del <name>` / `syncit mount ls [-a]` | Manage named mount roots and sync mount names to server. |
 | `syncit file add <path> [tags...]` | Track a file or recurse a directory; optional **file tags** filter which clients receive the file (see below). |
+| `syncit file del [-f] <path> [path...]` | Untrack local file(s) and propagate delete/untrack state to server (`-f` also removes local files). |
 | `syncit file ls` | Tracked files and status. |
+| `syncit file inspect <path>` | Show detailed tracked-file state (tags, hashes, local/remote versions, conflict flag). |
 | `syncit file get <path>` | Pull server version over local (conflict resolution). |
 | `syncit info` | Mounts and client tags. |
-| `syncit tag add …` / `syncit tag del …` | Client tag set (subscription / matching). |
+| `syncit tag ls` / `syncit tag add ...` / `syncit tag del ...` | List and manage this client's tag set (synced to server). |
+| `syncit version` | Print embedded build version tag (or `development`). |
+| `syncit upgrade` | Download and install latest release for current platform. Stops if daemon is running or already on latest tag. |
 
 Upload local changes:
 
@@ -112,6 +118,18 @@ syncit push '**/README.md'
 
 Conflicts: paths marked conflict are skipped by push/pull until you resolve (e.g. `syncit file get -y <path>` for remote wins).
 
+### Utility commands
+
+```bash
+syncit version
+syncit upgrade
+syncit wipe
+```
+
+- `version`: prints embedded release tag from `internal/cli/version.tag` (or `development` when no release tag is embedded).
+- `upgrade`: updates to latest GitHub release and installs into `~/.syncit/<tag>/...`, with launcher in `~/.syncit/bin`.
+- `wipe`: removes local syncit state directory after confirmation.
+
 ---
 
 ## Tags (conditional sync)
@@ -128,5 +146,4 @@ Full rules and edge cases: [`docs/design_v1.md`](docs/design_v1.md).
 
 ## Not implemented yet
 
-- `syncit file del`
 - `syncit share` (stubs / phase 2)
