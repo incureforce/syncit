@@ -9,10 +9,11 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/spf13/cobra"
 	clientdb "go-syncit/internal/client/db"
 	clienthttp "go-syncit/internal/client/http"
 	"go-syncit/internal/client/lock"
+
+	"github.com/spf13/cobra"
 )
 
 func cmdSyncDaemon() *cobra.Command {
@@ -83,11 +84,21 @@ func runSyncDaemon(ctx context.Context, db *clientdb.ClientDB, api *clienthttp.C
 			if err := json.Unmarshal(data, &ev); err != nil {
 				return nil
 			}
-			if ev.Kind != "file_version" {
+			switch ev.Kind {
+			case "file_version":
+				if err := PullPathAfterEvent(ctx, db, api, cid, ev.Mount, ev.Path); err != nil {
+					return err
+				}
+			case "file_deleted":
+				deleted, err := db.SoftDeleteTrackedByMountAndPath(ctx, ev.Mount, ev.Path)
+				if err != nil {
+					return err
+				}
+				if deleted {
+					fmt.Printf("%s %s\n", listMuted("untracked (event)"), listKey(ev.Mount+":"+ev.Path))
+				}
+			default:
 				return nil
-			}
-			if err := PullPathAfterEvent(ctx, db, api, cid, ev.Mount, ev.Path); err != nil {
-				return err
 			}
 			return AdvanceSyncState(ctx, db, api, cid)
 		})

@@ -35,6 +35,13 @@ type fileVersionPayload struct {
 	OccurredAt string `json:"occurred_at"`
 }
 
+type fileDeletedPayload struct {
+	Kind       string `json:"kind"`
+	Mount      string `json:"mount"`
+	Path       string `json:"path"`
+	OccurredAt string `json:"occurred_at"`
+}
+
 // PublishFileVersion records an event and delivers it to live subscribers for the given client IDs.
 func (h *EventHub) PublishFileVersion(affected []string, mount, path string, version int, fileHash string) {
 	at := time.Now().UTC()
@@ -44,6 +51,44 @@ func (h *EventHub) PublishFileVersion(affected []string, mount, path string, ver
 		Path:       path,
 		Version:    version,
 		FileHash:   fileHash,
+		OccurredAt: at.Format(time.RFC3339Nano),
+	}
+	raw, err := json.Marshal(p)
+	if err != nil {
+		return
+	}
+	se := storedEvent{at: at, raw: raw}
+
+	h.mu.Lock()
+	h.buf = append(h.buf, se)
+	if len(h.buf) > maxEventBuffer {
+		h.buf = h.buf[len(h.buf)-maxEventBuffer:]
+	}
+
+	var targets []chan []byte
+	for _, cid := range affected {
+		for ch := range h.subs[cid] {
+			targets = append(targets, ch)
+		}
+	}
+	h.mu.Unlock()
+
+	payload := append([]byte(nil), raw...)
+	for _, ch := range targets {
+		select {
+		case ch <- payload:
+		default:
+		}
+	}
+}
+
+// PublishFileDeleted records a delete event and delivers it to live subscribers for the given client IDs.
+func (h *EventHub) PublishFileDeleted(affected []string, mount, path string) {
+	at := time.Now().UTC()
+	p := fileDeletedPayload{
+		Kind:       "file_deleted",
+		Mount:      mount,
+		Path:       path,
 		OccurredAt: at.Format(time.RFC3339Nano),
 	}
 	raw, err := json.Marshal(p)

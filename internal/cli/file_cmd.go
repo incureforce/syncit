@@ -2,16 +2,20 @@ package cli
 
 import (
 	"bufio"
+	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/spf13/cobra"
+	clientdb "go-syncit/internal/client/db"
+	clienthttp "go-syncit/internal/client/http"
 	"go-syncit/internal/hashfile"
 	"go-syncit/internal/mount"
-	clienthttp "go-syncit/internal/client/http"
+
+	"github.com/spf13/cobra"
 )
 
 func init() {
@@ -110,15 +114,114 @@ func (errOutsideMounts) Error() string {
 }
 
 func cmdFileDel() *cobra.Command {
-	return &cobra.Command{
-		Use:   "del <path> [tag]",
-		Short: "Remove tracking or delete remotely",
-		Run: func(cmd *cobra.Command, args []string) {
-			exitNotImplemented("file del")
+	var force bool
+	c := &cobra.Command{
+		Use:   "del [-f] <path> [path...]",
+		Short: "Untrack files and propagate untracked state",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			db, err := openClientDB()
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+			ctx := cmd.Context()
+
+			url, err := db.ServerURL(ctx)
+			if err != nil {
+				return err
+			}
+			cid, err := db.ClientID(ctx)
+			if err != nil {
+				return err
+			}
+			api := &clienthttp.Client{BaseURL: url}
+
+			mounts, err := db.ListMounts(ctx)
+			if err != nil {
+				return err
+			}
+			entries := make([]mount.Entry, 0, len(mounts))
+			mountByName := make(map[string]clientdb.MountRow, len(mounts))
+			for _, m := range mounts {
+				entries = append(entries, mount.Entry{Name: m.Name, RootPath: m.RootPath})
+				mountByName[m.Name] = m
+			}
+
+			tracked, err := db.ListTrackedWithMount(ctx)
+			if err != nil {
+				return err
+			}
+
+			for _, arg := range args {
+				abs, err := expandPath(arg)
+				if err != nil {
+					return err
+				}
+				mountName, _, relPrefix, ok := mount.ResolveNearest(abs, entries)
+				if !ok {
+					return fmt.Errorf("%s: %w", arg, errPathOutsideMounts)
+				}
+
+				var targets []clientdb.TrackedFile
+				for _, tf := range tracked {
+					if tf.MountName != mountName {
+						continue
+					}
+					if pathUnderRelPrefix(tf.Path, relPrefix) {
+						targets = append(targets, tf)
+					}
+				}
+
+				if len(targets) == 0 {
+					if err := untrackOnePath(ctx, db, api, cid, mountByName[mountName], mountName, relPrefix, force); err != nil {
+						return err
+					}
+					continue
+				}
+
+				for _, tf := range targets {
+					m := mountByName[tf.MountName]
+					if err := untrackOnePath(ctx, db, api, cid, m, tf.MountName, tf.Path, force); err != nil {
+						return err
+					}
+				}
+			}
+			return nil
 		},
 	}
+	c.Flags().BoolVarP(&force, "force", "f", false, "Also remove local file(s) from disk")
+	return c
 }
 
+func untrackOnePath(ctx context.Context, db *clientdb.ClientDB, api *clienthttp.Client, clientID string, m clientdb.MountRow, mountName, relPath string, force bool) error {
+	if relPath == "" {
+		return fmt.Errorf("cannot delete mount root; specify a file or directory under %q", mountName)
+	}
+	fullPath := filepath.Join(m.RootPath, filepath.FromSlash(relPath))
+	if force {
+		if err := os.Remove(fullPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("%s: remove: %w", relPath, err)
+		}
+	}
+	if _, err := db.SoftDeleteTrackedByMountAndPath(ctx, mountName, relPath); err != nil {
+		return err
+	}
+	deletedRemote, err := api.DeleteFile(clientID, mountName, relPath)
+	if err != nil {
+		return err
+	}
+	status := listMuted("already untracked")
+	if deletedRemote {
+		status = syncGood("untracked")
+	}
+	flex := "local+remote"
+	if force {
+		flex = "local+remote, file removed"
+	}
+	fmt.Printf("%s %s %s\n", status, listKey(mountName+":"+relPath), listMuted(flex))
+	return nil
+}
 func cmdFileGet() *cobra.Command {
 	var yes bool
 	c := &cobra.Command{

@@ -6,12 +6,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/spf13/cobra"
 	clientdb "go-syncit/internal/client/db"
 	clienthttp "go-syncit/internal/client/http"
 	"go-syncit/internal/client/lock"
 	"go-syncit/internal/hashfile"
 	"go-syncit/internal/tags"
+
+	"github.com/spf13/cobra"
 )
 
 func init() {
@@ -141,6 +142,13 @@ func pullOne(ctx context.Context, db *clientdb.ClientDB, api *clienthttp.Client,
 		return err
 	}
 	if srv == nil {
+		deleted, err := db.SoftDeleteTrackedByID(ctx, tf.ID)
+		if err != nil {
+			return err
+		}
+		if deleted {
+			fmt.Printf("%s %s\n", listMuted("untracked (remote removed)"), listKey(tf.Path))
+		}
 		return nil
 	}
 

@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	serverdb "go-syncit/internal/server/db"
 )
@@ -122,6 +123,50 @@ func (s *Server) handleMountPushFile(w http.ResponseWriter, r *http.Request) {
 	}
 	s.hub.PublishFileVersion(affected, mountName, req.Path, res.Version, req.FileHash)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "mount_file_id": res.MountFileID, "version": res.Version})
+}
+
+func (s *Server) handleMountDeleteFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	cid := clientIDFrom(r)
+	if cid == "" {
+		http.Error(w, "missing "+syncitClientHeader, http.StatusBadRequest)
+		return
+	}
+	if _, err := s.db.GetClientTags(r.Context(), cid); err != nil {
+		if err == serverdb.ErrNotFound {
+			http.Error(w, "unknown client", http.StatusUnauthorized)
+			return
+		}
+		http.Error(w, "server error", http.StatusInternalServerError)
+		return
+	}
+	mountName := r.PathValue("mount")
+	relPath := strings.TrimPrefix(r.PathValue("path"), "/")
+	if mountName == "" || relPath == "" {
+		http.Error(w, "mount and path required", http.StatusBadRequest)
+		return
+	}
+	res, err := s.db.SoftDeleteFile(r.Context(), cid, mountName, relPath)
+	if err != nil {
+		if err == serverdb.ErrTagPolicy {
+			http.Error(w, "tag policy violation", http.StatusForbidden)
+			return
+		}
+		http.Error(w, "delete failed", http.StatusInternalServerError)
+		return
+	}
+	if res.Deleted {
+		affected, err := s.db.ClientIDsAffectedByFilePush(r.Context(), mountName, res.FileTags, cid)
+		if err != nil {
+			http.Error(w, "delete failed", http.StatusInternalServerError)
+			return
+		}
+		s.hub.PublishFileDeleted(affected, mountName, relPath)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": res.Deleted})
 }
 
 func (s *Server) handleBlobGet(w http.ResponseWriter, r *http.Request) {

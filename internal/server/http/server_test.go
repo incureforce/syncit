@@ -329,3 +329,113 @@ func TestPutClientMountsReplaces(t *testing.T) {
 		t.Fatalf("expected global mounts m1 and m2, got %+v", list.Mounts)
 	}
 }
+
+func TestDeleteFileEndpointSoftDeletes(t *testing.T) {
+	dir := t.TempDir()
+	srv, err := New(Config{Addr: ":0", DataDir: filepath.Join(dir, "data")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	regReq, err := http.NewRequest(http.MethodPost, ts.URL+"/v1/clients/register", strings.NewReader(`{"id":"cd1","name":""}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	regReq.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(regReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("register: %s", res.Status)
+	}
+
+	putMountsReq, err := http.NewRequest(http.MethodPut, ts.URL+"/v1/client/mounts", strings.NewReader(`{"mounts":["home"]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	putMountsReq.Header.Set("Content-Type", "application/json")
+	putMountsReq.Header.Set("X-Syncit-Client-ID", "cd1")
+	res, err = http.DefaultClient.Do(putMountsReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("put mounts: %s", res.Status)
+	}
+
+	blobReq, err := http.NewRequest(http.MethodPost, ts.URL+"/v1/blobs", strings.NewReader("hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	blobReq.Header.Set("X-Syncit-Client-ID", "cd1")
+	res, err = http.DefaultClient.Do(blobReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("blob: %s %s", res.Status, string(body))
+	}
+	var blobOut struct {
+		Hash string `json:"hash"`
+	}
+	if err := json.Unmarshal(body, &blobOut); err != nil {
+		t.Fatal(err)
+	}
+
+	pushBody := `{"path":"x.txt","tags":[],"file_hash":"` + blobOut.Hash + `","file_size":5}`
+	pushReq, err := http.NewRequest(http.MethodPost, ts.URL+"/v1/mounts/home/files", strings.NewReader(pushBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pushReq.Header.Set("Content-Type", "application/json")
+	pushReq.Header.Set("X-Syncit-Client-ID", "cd1")
+	res, err = http.DefaultClient.Do(pushReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("push: %s %s", res.Status, string(body))
+	}
+
+	delReq, err := http.NewRequest(http.MethodDelete, ts.URL+"/v1/mounts/home/files/x.txt", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	delReq.Header.Set("X-Syncit-Client-ID", "cd1")
+	res, err = http.DefaultClient.Do(delReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("delete: %s %s", res.Status, string(body))
+	}
+	if !strings.Contains(string(body), `"deleted":true`) {
+		t.Fatalf("expected deleted true, got: %s", string(body))
+	}
+
+	getReq, err := http.NewRequest(http.MethodGet, ts.URL+"/v1/mounts/home/files/x.txt", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	getReq.Header.Set("X-Syncit-Client-ID", "cd1")
+	res, err = http.DefaultClient.Do(getReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404 after delete, got %s", res.Status)
+	}
+}

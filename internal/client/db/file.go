@@ -7,8 +7,9 @@ import (
 	"errors"
 	"time"
 
-	"github.com/google/uuid"
 	"go-syncit/internal/tags"
+
+	"github.com/google/uuid"
 )
 
 // TrackedFile is one row in mount_file.
@@ -232,4 +233,39 @@ func (c *ClientDB) FileByID(ctx context.Context, id string) (TrackedFile, error)
 		return tf, err
 	}
 	return tf, nil
+}
+
+// SoftDeleteTrackedByID marks a tracked row deleted locally.
+func (c *ClientDB) SoftDeleteTrackedByID(ctx context.Context, id string) (bool, error) {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	res, err := c.sql.ExecContext(ctx, `
+		UPDATE mount_file
+		SET deleted_at = ?, updated_at = ?
+		WHERE id = ? AND deleted_at IS NULL
+	`, now, now, id)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
+// SoftDeleteTrackedByMountAndPath marks one tracked row deleted by mount name and relative path.
+func (c *ClientDB) SoftDeleteTrackedByMountAndPath(ctx context.Context, mountName, relPath string) (bool, error) {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	res, err := c.sql.ExecContext(ctx, `
+		UPDATE mount_file
+		SET deleted_at = ?, updated_at = ?
+		WHERE id IN (
+			SELECT mf.id
+			FROM mount_file mf
+			JOIN mount m ON m.id = mf.mount_id
+			WHERE m.name = ? AND mf.local_file_path = ? AND mf.deleted_at IS NULL AND m.deleted_at IS NULL
+		)
+	`, now, now, mountName, relPath)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
 }

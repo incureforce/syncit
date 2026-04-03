@@ -80,14 +80,38 @@ func ensureMountTx(ctx context.Context, tx *sql.Tx, name string) (string, error)
 }
 
 func ensureClientMountTx(ctx context.Context, tx *sql.Tx, clientID, mountID string) error {
-	id := uuid.NewString()
+	var existingID string
+	err := tx.QueryRowContext(ctx, `
+		SELECT id FROM client_mounts
+		WHERE client_id = ? AND mount_id = ? AND deleted_at IS NULL
+	`, clientID, mountID).Scan(&existingID)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	_, err := tx.ExecContext(ctx, `
+	// Reuse a soft-deleted row if one exists
+	var deletedID string
+	err = tx.QueryRowContext(ctx, `
+		SELECT id FROM client_mounts
+		WHERE client_id = ? AND mount_id = ? AND deleted_at IS NOT NULL
+		LIMIT 1
+	`, clientID, mountID).Scan(&deletedID)
+	if err == nil {
+		_, err = tx.ExecContext(ctx, `
+			UPDATE client_mounts SET deleted_at = NULL, updated_at = ? WHERE id = ?
+		`, now, deletedID)
+		return err
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	id := uuid.NewString()
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO client_mounts (id, client_id, mount_id, created_at, deleted_at, updated_at)
 		VALUES (?, ?, ?, ?, NULL, ?)
-		ON CONFLICT(client_id, mount_id) DO UPDATE SET
-			deleted_at = NULL,
-			updated_at = excluded.updated_at
 	`, id, clientID, mountID, now, now)
 	return err
 }

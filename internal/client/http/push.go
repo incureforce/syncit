@@ -103,3 +103,30 @@ func (c *Client) DownloadBlob(hash string) (io.ReadCloser, error) {
 	}
 	return resp.Body, nil
 }
+
+// DeleteFile marks a server file entry deleted for the given mount/path.
+// Returns true when a remote row changed, false when it was already deleted or absent.
+func (c *Client) DeleteFile(clientID, mountName, relPath string) (bool, error) {
+	u := mountFileItemURL(c.BaseURL, mountName, relPath)
+	req, err := http.NewRequest(http.MethodDelete, u, nil)
+	if err != nil {
+		return false, err
+	}
+	req.Header.Set(HeaderClientID, clientID)
+	resp, err := c.httpClient().Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return false, fmt.Errorf("delete file: %s: %s", resp.Status, string(b))
+	}
+	var out struct {
+		Deleted bool `json:"deleted"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return false, err
+	}
+	return out.Deleted, nil
+}

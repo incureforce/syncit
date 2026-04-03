@@ -80,6 +80,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /v1/mounts/{mount}/files", s.handleMountPushFile)
 	s.mux.HandleFunc("GET /v1/mounts/{mount}/files", s.handleMountFilesLatest)
 	s.mux.HandleFunc("GET /v1/mounts/{mount}/files/{path...}", s.handleMountFileLatest)
+	s.mux.HandleFunc("DELETE /v1/mounts/{mount}/files/{path...}", s.handleMountDeleteFile)
 	s.mux.HandleFunc("GET /v1/shares", s.handleSharesNotImplemented)
 	s.mux.HandleFunc("POST /v1/shares", s.handleSharesNotImplemented)
 }
