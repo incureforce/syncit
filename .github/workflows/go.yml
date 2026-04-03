@@ -47,6 +47,11 @@ jobs:
         with:
           go-version: "1.26"
 
+      - name: Write version tag
+        run: |
+          TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "development")
+          echo "$TAG" > internal/cli/version.tag
+
       - name: Build binary
         env:
           GOOS: ${{ matrix.goos }}
