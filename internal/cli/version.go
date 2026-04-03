@@ -20,19 +20,27 @@ func cmdVersion() *cobra.Command {
 		Use:   "version",
 		Short: "Show the version",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			version := "unknown"
-
-			if data, err := versionFS.ReadFile("version.tag"); err == nil {
-				bomLen, _ := detectBOM(data)
-				content := string(data[bomLen:])
-
-				version = strings.TrimSpace(content)
-			}
+			version := currentBuiltVersion()
 
 			fmt.Printf("%s\n", version)
 			return nil
 		},
 	}
+}
+
+func currentBuiltVersion() string {
+	version := "unknown"
+
+	if data, err := versionFS.ReadFile("version.tag"); err == nil {
+		bomLen, _ := detectBOM(data)
+		content := strings.TrimSpace(string(data[bomLen:]))
+
+		if content != "" {
+			version = content
+		}
+	}
+
+	return version
 }
 
 func detectBOM(data []byte) (bomLen int, encoding string) {

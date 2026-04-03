@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"go-syncit/internal/client/lock"
 	"go-syncit/internal/paths"
 
 	"github.com/spf13/cobra"
@@ -45,9 +46,29 @@ func cmdUpgrade() *cobra.Command {
 		Use:   "upgrade",
 		Short: "Download and install the latest release",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			dir, err := ensureSyncitDir()
+			if err != nil {
+				return err
+			}
+			lk, err := lock.TryLockDir(dir)
+			if err != nil {
+				if lock.IsErrHeld(err) {
+					fmt.Println("syncit daemon (or another sync command) appears to be running; stop it before upgrade")
+					return nil
+				}
+				return err
+			}
+			defer lk.Close()
+
 			tag, assetName, assetURL, err := fetchLatestReleaseInfo()
 			if err != nil {
 				return err
+			}
+
+			current := currentBuiltVersion()
+			if current == tag {
+				fmt.Printf("already on latest version: %s\n", tag)
+				return nil
 			}
 
 			fmt.Printf("Found latest release: %s (%s)\n", tag, assetName)
